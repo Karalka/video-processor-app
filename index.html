@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoProcessor 2</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Telegram Web App Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* Стили для темной темы по умолчанию */
+        :root {
+            color-scheme: dark;
+        }
+        body {
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        /* Стили для элементов интерфейса */
+        .card {
+            background-color: #2d3748;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .input, .select {
+            background-color: #4a5568;
+            border: 1px solid #718096;
+            color: #e2e8f0;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+        }
+        .btn {
+            background-color: #3182ce;
+            color: white;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #2b6cb0;
+        }
+        .btn-danger {
+            background-color: #e53e3e;
+        }
+        .btn-danger:hover {
+            background-color: #c53030;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25em 0.6em;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.375rem;
+        }
+        .badge-pending { background-color: #ecc94b; color: #1a202c; }
+        .badge-processing { background-color: #3182ce; color: white; }
+        .badge-done { background-color: #38a169; color: white; }
+        .badge-error { background-color: #e53e3e; color: white; }
+    </style>
+</head>
+<body class="p-4 font-sans">
+
+    <div id="app" class="max-w-3xl mx-auto">
+        
+        <header class="mb-4">
+            <h1 class="text-3xl font-bold text-white">VideoProcessor 2</h1>
+            <p class="text-gray-400">Панель управления</p>
+        </header>
+
+        <!-- Раздел Загрузчика -->
+        <div id="loading" class="text-center py-10">
+            <p>Загрузка данных...</p>
+        </div>
+
+        <!-- Раздел Аккаунтов -->
+        <div id="accounts-section" class="hidden">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-semibold">Аккаунты</h2>
+                <button id="add-account-btn" class="btn text-sm">+</button>
+            </div>
+            <div id="accounts-list">
+                <!-- Карточки аккаунтов будут здесь -->
+            </div>
+        </div>
+
+        <!-- Раздел Канала (когда выбран) -->
+        <div id="channel-section" class="hidden">
+            <button id="back-to-accounts-btn" class="text-blue-400 mb-2">&larr; Назад к аккаунтам</button>
+            <h2 class="text-2xl font-bold mb-3" id="channel-name"></h2>
+
+            <!-- Табы -->
+            <div class="flex border-b border-gray-700 mb-4">
+                <button data-tab="tasks" class="tab-btn p-3 text-gray-400 border-b-2 border-transparent">Задачи</button>
+                <button data-tab="settings" class="tab-btn p-3 text-gray-400 border-b-2 border-transparent">Настройки</button>
+                <button data-tab="finished" class="tab-btn p-3 text-gray-400 border-b-2 border-transparent">Готовые</button>
+            </div>
+
+            <!-- Контент табов -->
+            <div id="tab-content">
+                <!-- Таб: Задачи -->
+                <div id="tab-tasks" class="tab-panel hidden">
+                    <div class="card">
+                        <h3 class="font-semibold mb-2">Новая задача</h3>
+                        <div class="flex gap-2">
+                            <input type="text" id="video-url-input" placeholder="https://youtube.com/..." class="input flex-grow">
+                            <button id="download-btn" class="btn">Скачать</button>
+                        </div>
+                    </div>
+                    <h3 class="font-semibold mt-4 mb-2">Очередь задач (последние 20)</h3>
+                    <div id="tasks-list" class="space-y-2">
+                        <!-- Задачи будут здесь -->
+                    </div>
+                </div>
+
+                <!-- Таб: Настройки -->
+                <div id="tab-settings" class="tab-panel hidden">
+                    <div id="settings-form" class="space-y-3">
+                        <!-- Поля настроек будут здесь -->
+                    </div>
+                </div>
+
+                <!-- Таб: Готовые видео -->
+                <div id="tab-finished" class="tab-panel hidden">
+                    <div id="finished-list" class="space-y-2">
+                        <!-- Готовые видео будут здесь -->
+                    </div>
+                </div>
+            </div>
+            
+            <button id="delete-channel-btn" class="btn btn-danger w-full mt-6">Удалить этот канал</button>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Глобальное состояние ---
+        let state = {
+            accountsData: [],
+            currentChannelId: null,
+            currentChannelData: null,
+            activeTab: 'tasks',
+            isLoading: false,
+            refreshInterval: null
+        };
+
+        // --- API-клиент ---
+        const api = {
+            // (В реальном приложении здесь будет заголовок авторизации)
+            // headers: { 'Authorization': `Bearer ${window.Telegram.WebApp.initData}` },
+            headers: { 'Content-Type': 'application/json' },
+            
+            async get(url) {
+                const response = await fetch(url, { method: 'GET', headers: this.headers });
+                return response.json();
+            },
+            async post(url, body) {
+                const response = await fetch(url, { method: 'POST', headers: this.headers, body: JSON.stringify(body) });
+                return response.json();
+            },
+            async delete(url) {
+                const response = await fetch(url, { method: 'DELETE', headers: this.headers });
+                return response.json();
+            }
+        };
+
+        // --- Рендеринг (Отрисовка) ---
+        
+        function render() {
+            const app = document.getElementById('app');
+            const loading = document.getElementById('loading');
+            const accountsSection = document.getElementById('accounts-section');
+            const channelSection = document.getElementById('channel-section');
+
+            if (state.isLoading && !state.currentChannelId) {
+                loading.classList.remove('hidden');
+                accountsSection.classList.add('hidden');
+                channelSection.classList.add('hidden');
+                return;
+            }
+
+            loading.classList.add('hidden');
+
+            if (state.currentChannelId) {
+                accountsSection.classList.add('hidden');
+                channelSection.classList.remove('hidden');
+                renderChannelView();
+            } else {
+                accountsSection.classList.remove('hidden');
+                channelSection.classList.add('hidden');
+                renderAccountsList();
+            }
+        }
+
+        function renderAccountsList() {
+            const list = document.getElementById('accounts-list');
+            list.innerHTML = '';
+            if (state.accountsData.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 card">Аккаунты не найдены.</p>';
+                return;
+            }
+
+            state.accountsData.forEach(acc => {
+                const accEl = document.createElement('div');
+                accEl.className = 'card';
+                accEl.innerHTML = `
+                    <h3 class="text-lg font-semibold">${acc.name}</h3>
+                    <div class="pl-4 mt-2 space-y-2">
+                        ${acc.channels.map(ch => `
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-300">${ch.name}</span>
+                                <button class="btn text-sm py-1 px-2" data-channel-id="${ch.id}">Открыть</button>
+                            </div>
+                        `).join('')}
+                        <button class="btn text-sm py-1 px-2 mt-2" data-account-id="${acc.id}">+ Добавить канал</button>
+                    </div>
+                    <button class="btn btn-danger text-sm py-1 px-2 w-full mt-4" data-delete-account-id="${acc.id}">Удалить аккаунт</button>
+                `;
+                list.appendChild(accEl);
+            });
+        }
+
+        function renderChannelView() {
+            if (!state.currentChannelData) return;
+            
+            document.getElementById('channel-name').textContent = state.accountsData
+                .flatMap(a => a.channels)
+                .find(c => c.id === state.currentChannelId)?.name || 'Канал';
+
+            // Рендеринг табов
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab === state.activeTab) {
+                    btn.classList.add('text-white', 'border-blue-500');
+                    btn.classList.remove('text-gray-400', 'border-transparent');
+                } else {
+                    btn.classList.remove('text-white', 'border-blue-500');
+                    btn.classList.add('text-gray-400', 'border-transparent');
+                }
+            });
+
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                if (panel.id === `tab-${state.activeTab}`) {
+                    panel.classList.remove('hidden');
+                } else {
+                    panel.classList.add('hidden');
+                }
+            });
+
+            // Рендеринг контента табов
+            renderTasks();
+            renderSettings();
+            renderFinished();
+        }
+        
+        function getStatusBadge(status) {
+            if (status === 'pending') return '<span class="badge badge-pending">Ожидание</span>';
+            if (status === 'processing') return '<span class="badge badge-processing">В работе</span>';
+            if (status === 'done') return '<span class="badge badge-done">Готово</span>';
+            if (status === 'error') return '<span class="badge badge-error">Ошибка</span>';
+            return `<span class="badge">${status}</span>`;
+        }
+
+        function renderTasks() {
+            const list = document.getElementById('tasks-list');
+            const tasks = state.currentChannelData.tasks || [];
+            if (tasks.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-center">Задач пока нет.</p>';
+                return;
+            }
+            list.innerHTML = tasks.map(task => `
+                <div class="card !p-3">
+                    <div class="flex justify-between items-center">
+                        <span class="font-semibold">${task.type.toUpperCase()}</span>
+                        ${getStatusBadge(task.status)}
+                    </div>
+                    <p class="text-sm text-gray-300 truncate mt-1" title="${task.display}">${task.display}</p>
+                    ${task.message ? `<p class="text-sm text-yellow-400 mt-1">${task.message}</p>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function renderSettings() {
+            const form = document.getElementById('settings-form');
+            const settings = state.currentChannelData.settings || {};
+            form.innerHTML = Object.keys(settings).map(key => {
+                const value = settings[key];
+                let inputHtml = '';
+                if (typeof value === 'boolean') {
+                    inputHtml = `
+                        <select class="select setting-input" data-key="${key}">
+                            <option value="true" ${value ? 'selected' : ''}>True (Включено)</option>
+                            <option value="false" ${!value ? 'selected' : ''}>False (Выключено)</option>
+                        </select>
+                    `;
+                } else {
+                    inputHtml = `<input type="text" class="input setting-input" data-key="${key}" value="${value}">`;
+                }
+                
+                return `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">${key}</label>
+                        ${inputHtml}
+                    </div>
+                `;
+            }).join('');
+            form.innerHTML += '<button id="save-settings-btn" class="btn w-full mt-4">Сохранить настройки</button>';
+        }
+
+        function renderFinished() {
+            const list = document.getElementById('finished-list');
+            const videos = state.currentChannelData.finished_videos || [];
+            if (videos.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-center">Готовых видео пока нет.</p>';
+                return;
+            }
+            list.innerHTML = videos.map(video => `
+                <div class="card !p-3">
+                    <p class="text-gray-200">${video}</p>
+                </div>
+            `).join('');
+        }
+
+        // --- Логика (Действия) ---
+
+        async function showToast(message, isError = false) {
+            // В Mini App используем HapticFeedback и Popup
+            if (window.Telegram.WebApp) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred(isError ? 'error' : 'success');
+                window.Telegram.WebApp.showPopup({
+                    title: isError ? 'Ошибка' : 'Готово',
+                    message: message,
+                    buttons: [{ type: 'ok' }]
+                });
+            } else {
+                alert(message);
+            }
+        }
+        
+        async function loadInitialData() {
+            state.isLoading = true;
+            render();
+            try {
+                const response = await api.get('/api/data');
+                if (response.status === 'ok') {
+                    state.accountsData = response.data;
+                } else {
+                    throw new Error(response.message);
+                }
+            } catch (e) {
+                showToast(`Не удалось загрузить данные: ${e.message}`, true);
+            }
+            state.isLoading = false;
+            render();
+        }
+
+        async function selectChannel(channelId) {
+            state.currentChannelId = channelId;
+            state.isLoading = true;
+            render(); // Показываем скелет канала
+            
+            try {
+                const response = await api.get(`/api/channel/${channelId}`);
+                if (response.status === 'ok') {
+                    state.currentChannelData = response.data;
+                } else {
+                    throw new Error(response.message);
+                }
+            } catch (e) {
+                showToast(`Не удалось загрузить канал: ${e.message}`, true);
+                state.currentChannelId = null; // Возвращаемся назад
+            }
+            
+            state.isLoading = false;
+            state.activeTab = 'tasks'; // Сбрасываем на таб задач
+            render();
+            
+            // Запускаем авто-обновление
+            if (state.refreshInterval) clearInterval(state.refreshInterval);
+            state.refreshInterval = setInterval(refreshChannelData, 5000); // Обновляем каждые 5с
+        }
+        
+        async function refreshChannelData() {
+            if (!state.currentChannelId) return;
+            try {
+                const response = await api.get(`/api/channel/${state.currentChannelId}`);
+                if (response.status === 'ok') {
+                    state.currentChannelData = response.data;
+                    render(); // Перерисовываем только контент
+                }
+            } catch (e) {
+                console.error("Ошибка авто-обновления:", e.message);
+                // Тут можно показать незаметный индикатор ошибки
+            }
+        }
+
+        function unselectChannel() {
+            state.currentChannelId = null;
+            state.currentChannelData = null;
+            if (state.refreshInterval) clearInterval(state.refreshInterval);
+            state.refreshInterval = null;
+            render();
+        }
+
+        // --- Обработчики событий ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const tg = window.Telegram.WebApp;
+            if (tg) {
+                tg.ready();
+                tg.expand();
+            }
+
+            const app = document.getElementById('app');
+
+            // --- Навигация ---
+            app.addEventListener('click', e => {
+                // Назад
+                if (e.target.id === 'back-to-accounts-btn') {
+                    unselectChannel();
+                }
+                
+                // Открыть канал
+                if (e.target.dataset.channelId) {
+                    selectChannel(parseInt(e.target.dataset.channelId, 10));
+                }
+                
+                // Переключить таб
+                if (e.target.dataset.tab) {
+                    state.activeTab = e.target.dataset.tab;
+                    render();
+                }
+            });
+
+            // --- CRUD Аккаунтов/Каналов ---
+            app.addEventListener('click', async e => {
+                // Добавить Аккаунт
+                if (e.target.id === 'add-account-btn') {
+                    const name = prompt("Введите имя нового аккаунта:");
+                    if (!name) return;
+                    try {
+                        const res = await api.post('/api/account', { name });
+                        if (res.status !== 'ok') throw new Error(res.message);
+                        showToast('Аккаунт создан!');
+                        loadInitialData(); // Перезагружаем все
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+                
+                // Добавить Канал
+                if (e.target.dataset.accountId) {
+                    const name = prompt("Введите имя нового канала:");
+                    if (!name) return;
+                    const accountId = e.target.dataset.accountId;
+                    try {
+                        const res = await api.post(`/api/account/${accountId}/channel`, { name });
+                        if (res.status !== 'ok') throw new Error(res.message);
+                        showToast('Канал создан!');
+                        loadInitialData(); // Перезагружаем все
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+                
+                // Удалить Аккаунт
+                if (e.target.dataset.deleteAccountId) {
+                    if (!confirm("Вы уверены? Это удалит аккаунт и ВСЕ его каналы/видео.")) return;
+                    const accountId = e.target.dataset.deleteAccountId;
+                    try {
+                        const res = await api.delete(`/api/account/${accountId}`);
+                        if (res.status !== 'ok') throw new Error(res.message);
+                        showToast('Аккаунт удален!');
+                        loadInitialData();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+                
+                // Удалить Канал
+                if (e.target.id === 'delete-channel-btn') {
+                    if (!confirm("Вы уверены? Это удалит канал и ВСЕ его задачи/видео.")) return;
+                    try {
+                        const res = await api.delete(`/api/channel/${state.currentChannelId}`);
+                        if (res.status !== 'ok') throw new Error(res.message);
+                        showToast('Канал удален!');
+                        unselectChannel();
+                        loadInitialData();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+            });
+
+            // --- Задачи и Настройки ---
+            app.addEventListener('click', async e => {
+                // Сохранить Настройки
+                if (e.target.id === 'save-settings-btn') {
+                    const inputs = document.querySelectorAll('#settings-form .setting-input');
+                    let hasError = false;
+                    for (const input of inputs) {
+                        const key = input.dataset.key;
+                        const value = input.value;
+                        try {
+                            const res = await api.post(`/api/channel/${state.currentChannelId}/settings`, { key, value });
+                            if (res.status !== 'ok') throw new Error(res.message);
+                        } catch (err) {
+                            hasError = true;
+                            showToast(`Ошибка сохранения ${key}: ${err.message}`, true);
+                        }
+                    }
+                    if (!hasError) showToast('Настройки сохранены!');
+                    refreshChannelData();
+                }
+                
+                // Скачать Видео
+                if (e.target.id === 'download-btn') {
+                    const input = document.getElementById('video-url-input');
+                    const url = input.value;
+                    if (!url) return;
+                    
+                    e.target.disabled = true;
+                    e.target.textContent = '...';
+                    try {
+                        const res = await api.post(`/api/channel/${state.currentChannelId}/download`, { url });
+                        if (res.status !== 'ok') throw new Error(res.message);
+                        showToast('Задача на скачивание создана!');
+                        input.value = '';
+                        state.activeTab = 'tasks'; // Переключаемся на задачи
+                        refreshChannelData();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                    e.target.disabled = false;
+                    e.target.textContent = 'Скачать';
+                }
+            });
+
+            // --- Запуск ---
+            loadInitialData();
+        });
+
+    </script>
+</body>
+</html>
