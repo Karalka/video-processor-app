@@ -143,6 +143,11 @@
     </div>
 
     <script>
+        // --- КОНФИГУРАЦИЯ API ---
+        // ВАЖНО! Укажите здесь IP-адрес и порт вашего ПК, где запущен bot.py
+        // Используйте http, так как SSL не настроен (согласно логам)
+        const API_BASE_URL = 'http://192.168.1.110:8443';
+
         // --- Глобальное состояние ---
         let state = {
             accountsData: [],
@@ -160,15 +165,18 @@
             headers: { 'Content-Type': 'application/json' },
             
             async get(url) {
-                const response = await fetch(url, { method: 'GET', headers: this.headers });
+                // ИЗМЕНЕНО: Добавляем базовый URL
+                const response = await fetch(`${API_BASE_URL}${url}`, { method: 'GET', headers: this.headers });
                 return response.json();
             },
             async post(url, body) {
-                const response = await fetch(url, { method: 'POST', headers: this.headers, body: JSON.stringify(body) });
+                // ИЗМЕНЕНО: Добавляем базовый URL
+                const response = await fetch(`${API_BASE_URL}${url}`, { method: 'POST', headers: this.headers, body: JSON.stringify(body) });
                 return response.json();
             },
             async delete(url) {
-                const response = await fetch(url, { method: 'DELETE', headers: this.headers });
+                // ИЗМЕНЕНО: Добавляем базовый URL
+                const response = await fetch(`${API_BASE_URL}${url}`, { method: 'DELETE', headers: this.headers });
                 return response.json();
             }
         };
